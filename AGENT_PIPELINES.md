@@ -361,3 +361,302 @@ First Task: "Исследовать текущие тренды в AI"
 
 ---
 
+## 3. ConversationalAgent & XMLAgent Pipelines
+
+**Назначение:** Агенты с доступом к инструментам для выполнения действий. ConversationalAgent использует JSON формат, XMLAgent - XML теги.
+
+**Файлы:**
+- `packages/components/nodes/agents/ConversationalAgent/`
+- `packages/components/nodes/agents/XMLAgent/`
+
+### Общая схема ReAct Pattern
+
+Оба агента используют паттерн **ReAct** (Reasoning + Acting):
+
+```
+┌──────────────────────────────────────────┐
+│      ВХОДНЫЕ ДАННЫЕ                      │
+├──────────────────────────────────────────┤
+│ • User Input (запрос пользователя)       │
+│ • Available Tools (список инструментов)  │
+│ • Chat History (опционально)             │
+└──────────────────────────────────────────┘
+                    │
+        ┌───────────▼────────────┐
+        │    REACT LOOP          │
+        │  (повторяется до       │
+        │   финального ответа)   │
+        └───────────┬────────────┘
+                    │
+        ┌───────────▼────────────────────────┐
+        │  ШАГ 1: REASONING (Рассуждение)    │
+        ├────────────────────────────────────┤
+        │ Промт: System Prompt + User Input  │
+        │ + Agent Scratchpad                 │
+        │                                    │
+        │ LLM анализирует:                   │
+        │  - Что нужно сделать?              │
+        │  - Какой инструмент использовать?  │
+        │  - С какими параметрами?           │
+        │                                    │
+        │ Output (ConversationalAgent):      │
+        │  {"action": "tool_name",           │
+        │   "action_input": "params"}        │
+        │                                    │
+        │ Output (XMLAgent):                 │
+        │  <tool>tool_name</tool>            │
+        │  <tool_input>params</tool_input>   │
+        └────────────┬───────────────────────┘
+                     │
+        ┌────────────▼───────────────────────┐
+        │  ШАГ 2: ACTING (Действие)          │
+        ├────────────────────────────────────┤
+        │ Execution: Вызов инструмента       │
+        │                                    │
+        │ tool_result = execute_tool(        │
+        │   name=action,                     │
+        │   params=action_input              │
+        │ )                                  │
+        │                                    │
+        │ Output: Результат работы tool      │
+        └────────────┬───────────────────────┘
+                     │
+        ┌────────────▼───────────────────────┐
+        │  ШАГ 3: OBSERVATION (Наблюдение)   │
+        ├────────────────────────────────────┤
+        │ Добавление в Agent Scratchpad:     │
+        │                                    │
+        │ scratchpad += f"""                 │
+        │ Thought: {reasoning}               │
+        │ Action: {action}                   │
+        │ Action Input: {action_input}       │
+        │ Observation: {tool_result}         │
+        │ """                                │
+        └────────────┬───────────────────────┘
+                     │
+        ┌────────────▼───────────────────────┐
+        │  ПРОВЕРКА: Финальный ответ?        │
+        ├────────────────────────────────────┤
+        │ ConversationalAgent:               │
+        │   Если нет "action" → Final Answer │
+        │                                    │
+        │ XMLAgent:                          │
+        │   Если <final_answer> → Готово    │
+        └────┬──────────────────┬────────────┘
+             │ Нет              │ Да
+             │                  ▼
+             │         ┌──────────────────┐
+             │         │ ФИНАЛЬНЫЙ ОТВЕТ  │
+             │         └──────────────────┘
+             │
+             └──► Возврат к Шагу 1 (новая итерация с обновлённым scratchpad)
+```
+
+### XMLAgent: Детальный пример потока
+
+```
+User Input: "What is the weather in San Francisco?"
+
+ИТЕРАЦИЯ 1:
+  ├─ Промт:
+  │  System: XML_AGENT_DEFAULT_SYSTEM_MESSAGE
+  │  {tools} = "search: queries web for information"
+  │  {input} = "What is the weather in San Francisco?"
+  │  {agent_scratchpad} = "" (пусто на старте)
+  │
+  ├─ LLM Output:
+  │  <tool>search</tool>
+  │  <tool_input>weather San Francisco</tool_input>
+  │
+  ├─ Tool Execution:
+  │  search("weather San Francisco")
+  │  → "Current weather: 64°F, partly cloudy"
+  │
+  └─ Updated Scratchpad:
+     <tool>search</tool>
+     <tool_input>weather San Francisco</tool_input>
+     <observation>Current weather: 64°F, partly cloudy</observation>
+
+ИТЕРАЦИЯ 2:
+  ├─ Промт:
+  │  {agent_scratchpad} = (скретчпад из итерации 1)
+  │
+  ├─ LLM Output:
+  │  <final_answer>
+  │  The weather in San Francisco is 64°F and partly cloudy.
+  │  </final_answer>
+  │
+  └─ ЗАВЕРШЕНИЕ: Возврат финального ответа
+```
+
+### Ключевые различия между агентами
+
+| Аспект | ConversationalAgent | XMLAgent |
+|--------|---------------------|----------|
+| **Формат вывода** | JSON | XML теги |
+| **Промт** | DEFAULT_PREFIX + инструкции | XML_AGENT_DEFAULT_SYSTEM_MESSAGE |
+| **Парсинг** | Regex для JSON | XML парсер |
+| **Лучше для** | GPT-3.5, GPT-4 | Claude, reasoning модели |
+| **Структура** | `{"action": "...", "action_input": "..."}` | `<tool>...</tool><tool_input>...</tool_input>` |
+
+---
+
+## 4. MultiAgent Supervisor Pipeline
+
+**Назначение:** Координация работы нескольких специализированных агентов через супервизора.
+
+**Файл:** `packages/components/nodes/multiagents/Supervisor/`
+
+### Схема работы
+
+```
+┌────────────────────────────────────────────────────────────┐
+│               ВХОДНЫЕ ДАННЫЕ                               │
+├────────────────────────────────────────────────────────────┤
+│ • User Request                                             │
+│ • Worker Agents = [Agent1, Agent2, ..., AgentN]           │
+│ • Supervisor LLM                                           │
+└────────────────────────────────────────────────────────────┘
+                          │
+            ┌─────────────▼──────────────┐
+            │   SUPERVISOR ЦИКЛ          │
+            └─────────────┬──────────────┘
+                          │
+┌─────────────────────────▼─────────────────────────────────┐
+│  ШАГ 1: ВЫБОР СЛЕДУЮЩЕГО WORKER                           │
+├───────────────────────────────────────────────────────────┤
+│ Промт: SUPERVISOR_SYSTEM_PROMPT                           │
+│                                                            │
+│ Входные переменные:                                        │
+│   {team_members} ← ["agent1", "agent2", "agent3"]         │
+│   {user_request} + {conversation_history}                 │
+│                                                            │
+│ Процесс:                                                   │
+│   Supervisor анализирует текущее состояние и выбирает     │
+│   наиболее подходящего worker для следующего шага         │
+│                                                            │
+│ Output:                                                    │
+│   next_worker = "agent2" | "FINISH"                       │
+└───────────────────────────┬───────────────────────────────┘
+                            │
+                  ┌─────────▼─────────┐
+                  │  Выбран FINISH?   │
+                  └────┬─────────┬────┘
+                       │ Нет     │ Да
+                       │         │
+                       │         ▼
+                       │  ┌────────────┐
+                       │  │ ЗАВЕРШЕНИЕ │
+                       │  └────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│  ШАГ 2: ВЫПОЛНЕНИЕ WORKER ЗАДАЧИ                         │
+├──────────────────────────────────────────────────────────┤
+│ Процесс:                                                  │
+│   selected_worker.execute(task)                          │
+│                                                           │
+│ Output:                                                   │
+│   worker_result = "Результат работы worker"              │
+│   worker_status = "completed" | "needs_input" | ...      │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────┐
+│  ШАГ 3: ОБНОВЛЕНИЕ КОНТЕКСТА                             │
+├──────────────────────────────────────────────────────────┤
+│ conversation_history.append({                            │
+│   agent: selected_worker,                                │
+│   result: worker_result,                                 │
+│   status: worker_status                                  │
+│ })                                                       │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+                       └──► Возврат к Шагу 1
+```
+
+### Пример работы
+
+```
+User: "Создать веб-приложение с регистрацией пользователей"
+
+Workers: [ResearchAgent, CoderAgent, ReviewerAgent]
+
+Шаг 1:
+  Supervisor → "ResearchAgent"
+  ResearchAgent: "Для регистрации нужны: auth, база данных, API"
+
+Шаг 2:
+  Supervisor → "CoderAgent"
+  CoderAgent: "Создал файлы: auth.ts, db.ts, api.ts"
+
+Шаг 3:
+  Supervisor → "ReviewerAgent"
+  ReviewerAgent: "Код проверен, найдены 2 улучшения"
+
+Шаг 4:
+  Supervisor → "CoderAgent"
+  CoderAgent: "Исправления внесены"
+
+Шаг 5:
+  Supervisor → "FINISH"
+  Результат: Завершенное приложение
+```
+
+---
+
+## 5. Retriever Pipelines
+
+Различные стратегии улучшения поиска информации.
+
+### 5.1 MultiQuery Retriever
+
+```
+User Question → MULTI_QUERY_PROMPT → [Q1, Q2, Q3] →
+  → Vector Search (для каждого Q) →
+  → Объединение уникальных результатов →
+  → Ranked Documents
+```
+
+**Преимущество:** Находит документы с разных "углов" зрения на вопрос.
+
+### 5.2 HyDE Retriever
+
+```
+User Question → HYDE_PROMPT (для домена) →
+  → Hypothetical Document →
+  → Embedding (гипотетического док) →
+  → Similarity Search →
+  → Real Documents
+```
+
+**Преимущество:** Поиск по "идеальному" ответу вместо вопроса.
+
+### 5.3 Condition Agent (AgentFlow)
+
+```
+User Input → CONDITION_AGENT_SYSTEM_PROMPT →
+  {input, scenarios, instruction} →
+  → LLM Analysis →
+  → {"output": "selected_scenario"} →
+  → Route to corresponding handler
+```
+
+**Преимущество:** Интеллектуальная маршрутизация запросов.
+
+---
+
+## СВОДНАЯ ТАБЛИЦА ПАЙПЛАЙНОВ
+
+| Pipeline | Промтов | Шагов | Циклический? | Использует инструменты? |
+|----------|---------|-------|--------------|-------------------------|
+| **ConversationalRetrievalQA** | 2 | 5 | Нет | Нет |
+| **BabyAGI** | 3 | 3 | Да | Опционально |
+| **ConversationalAgent** | 2 | 3 | Да | Да |
+| **XMLAgent** | 1 | 3 | Да | Да |
+| **MultiAgent Supervisor** | 1 | 3 | Да | Через workers |
+| **MultiQuery Retriever** | 1 | 2 | Нет | Нет |
+| **HyDE Retriever** | 1 (8 вар.) | 2 | Нет | Нет |
+| **Condition Agent** | 1 | 1 | Нет | Нет |
+
+---
+
