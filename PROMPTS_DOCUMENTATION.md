@@ -120,3 +120,115 @@ Summarize the conversation between the user and the assistant, reiterate the las
 
 ---
 
+## CHAIN PROMPTS
+
+Промты для цепочек обработки (Chains) - последовательностей операций для работы с документами, базами данных, API и диалогами.
+
+**Основные файлы:**
+- `packages/components/nodes/chains/ConversationalRetrievalQAChain/prompts.ts`
+- `packages/components/nodes/chains/ConversationChain/ConversationChain.ts`
+
+### 1. CUSTOM_QUESTION_GENERATOR_CHAIN_PROMPT
+
+**Назначение:** Преобразует follow-up вопросы пользователя в самостоятельные (standalone) вопросы, которые можно понять без контекста предыдущей беседы. Это критически важно для корректного поиска информации в векторных базах данных.
+
+**Применение:** Используется в ConversationalRetrievalQAChain для переформулирования вопросов перед отправкой в retriever.
+
+**Переменные:**
+- `{chat_history}` - история предыдущих сообщений
+- `{question}` - текущий вопрос пользователя
+
+**Промт:**
+```
+Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, answer in the same language as the follow up question. include it in the standalone question.
+
+Chat History:
+{chat_history}
+Follow Up Input: {question}
+Standalone question:
+```
+
+### 2. RESPONSE_TEMPLATE
+
+**Назначение:** Системный промт для взаимодействия с документами в режиме вопрос-ответ. Определяет поведение AI ассистента при работе с предоставленным контекстом.
+
+**Применение:** Используется в ConversationalRetrievalQAChain для генерации ответов на основе найденных документов.
+
+**Переменные:**
+- `{context}` - релевантный контекст из документов
+
+**Особенности:**
+- AI отвечает только на основе предоставленного контекста
+- При отсутствии релевантной информации отвечает "Hmm, I'm not sure"
+- Запрещает выдумывать информацию
+
+**Промт:**
+```
+I want you to act as a document that I am having a conversation with. Your name is "AI Assistant". Using the provided context, answer the user's question to the best of your ability using the resources provided.
+If there is nothing in the context relevant to the question at hand, just say "Hmm, I'm not sure" and stop after that. Refuse to answer any question not about the info. Never break character.
+------------
+{context}
+------------
+REMEMBER: If there is no relevant information within the context, just say "Hmm, I'm not sure". Don't try to make up an answer. Never break character.
+```
+
+### 3. QA_TEMPLATE
+
+**Назначение:** Базовый шаблон для простого вопрос-ответа без сохранения истории диалога.
+
+**Применение:** Используется для простых QA задач, где не требуется поддержание контекста беседы.
+
+**Переменные:**
+- `{context}` - фрагменты текста для ответа
+- `{question}` - вопрос пользователя
+
+**Промт:**
+```
+Use the following pieces of context to answer the question at the end.
+
+{context}
+
+Question: {question}
+Helpful Answer:
+```
+
+### 4. REPHRASE_TEMPLATE
+
+**Назначение:** Альтернативный шаблон для переформулирования вопросов. Более короткая версия CUSTOM_QUESTION_GENERATOR_CHAIN_PROMPT.
+
+**Применение:** Используется когда нужна более лаконичная переформулировка без дополнительных инструкций.
+
+**Переменные:**
+- `{chat_history}` - история беседы
+- `{question}` - текущий вопрос
+
+**Промт:**
+```
+Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question.
+
+Chat History:
+{chat_history}
+Follow Up Input: {question}
+Standalone Question:
+```
+
+### 5. CONVERSATION_CHAIN_SYSTEM_MESSAGE
+
+**Назначение:** Системное сообщение по умолчанию для ConversationChain - определяет характер обычного диалога с AI.
+
+**Применение:** Используется в ConversationChain для создания дружелюбного разговорного интерфейса.
+
+**Файл:** `packages/components/nodes/chains/ConversationChain/ConversationChain.ts:32`
+
+**Особенности:**
+- Определяет AI как разговорчивого и детального ассистента
+- AI честно признаёт незнание, если не знает ответа
+- Создаёт дружелюбную атмосферу беседы
+
+**Промт:**
+```
+The following is a friendly conversation between a human and an AI. The AI is talkative and provides lots of specific details from its context. If the AI does not know the answer to a question, it truthfully says it does not know.
+```
+
+---
+
