@@ -702,3 +702,184 @@ Extract keywords from the query: {{query}}
 
 ---
 
+## API & TEMPLATE PROMPTS
+
+Промты для работы с API, шаблонов промтов и других вспомогательных компонентов. Эти промты обеспечивают гибкость и переиспользуемость в построении AI приложений.
+
+**Основные файлы:**
+- `packages/components/nodes/chains/ApiChain/GETApiChain.ts`
+- `packages/components/nodes/prompts/ChatPromptTemplate/ChatPromptTemplate.ts`
+- `packages/components/nodes/prompts/PromptTemplate/PromptTemplate.ts`
+- `packages/components/nodes/prompts/FewShotPromptTemplate/FewShotPromptTemplate.ts`
+
+### 1. API_URL_PROMPT_TEMPLATE
+
+**Назначение:** Генерирует правильный URL для вызова API на основе документации API и вопроса пользователя. Оптимизирует запрос для получения минимально необходимой информации.
+
+**Применение:** Используется в GETApiChain для автоматического построения API запросов.
+
+**Файл:** `packages/components/nodes/chains/ApiChain/GETApiChain.ts:8-14`
+
+**Переменные:**
+- `{api_docs}` - документация API
+- `{question}` - вопрос пользователя
+
+**Особенности:**
+- Строит URL для получения короткого ответа
+- Исключает ненужные данные из запроса
+- Фокусируется на необходимой информации
+
+**Промт:**
+```
+You are given the below API Documentation:
+{api_docs}
+Using this documentation, generate the full API url to call for answering the user question.
+You should build the API url in order to get a response that is as short as possible, while still getting the necessary information to answer the question. Pay attention to deliberately exclude any unnecessary pieces of data in the API call.
+
+Question:{question}
+API url:
+```
+
+### 2. API_RESPONSE_PROMPT_TEMPLATE
+
+**Назначение:** Обрабатывает ответ от API и формулирует ответ на вопрос пользователя на основе полученных данных.
+
+**Применение:** Используется в GETApiChain для интерпретации ответа API.
+
+**Файл:** `packages/components/nodes/chains/ApiChain/GETApiChain.ts:16-17`
+
+**Переменные:**
+- `{api_response}` - ответ от API
+- `{api_url}` - URL, который был вызван
+- `{question}` - исходный вопрос пользователя
+
+**Промт:**
+```
+Given this {api_response} response for {api_url}. use the given response to answer this {question}
+```
+
+### 3. CHAT_PROMPT_TEMPLATE_EXAMPLES
+
+**Назначение:** Примеры использования шаблонов для чат-промтов с системными и пользовательскими сообщениями.
+
+**Применение:** Служит шаблоном для создания структурированных диалогов с переменными.
+
+**Файл:** `packages/components/nodes/prompts/ChatPromptTemplate/ChatPromptTemplate.ts:57-65`
+
+#### System Message Example
+
+**Описание:** Пример системного сообщения для задачи перевода с переменными языков.
+
+**Переменные:**
+- `{input_language}` - язык ввода
+- `{output_language}` - язык вывода
+
+**Промт:**
+```
+You are a helpful assistant that translates {input_language} to {output_language}.
+```
+
+#### Human Message Example
+
+**Описание:** Пример пользовательского сообщения с переменной для текста.
+
+**Переменные:**
+- `{text}` - текст для обработки
+
+**Промт:**
+```
+{text}
+```
+
+### 4. PROMPT_TEMPLATE_EXAMPLE
+
+**Назначение:** Базовый пример простого шаблона промта с одной переменной.
+
+**Применение:** Демонстрирует основной принцип работы с переменными в промтах.
+
+**Файл:** `packages/components/nodes/prompts/PromptTemplate/PromptTemplate.ts:31`
+
+**Переменные:**
+- `{product}` - название продукта
+
+**Промт:**
+```
+What is a good name for a company that makes {product}?
+```
+
+### 5. FEW_SHOT_PROMPT_TEMPLATE
+
+**Назначение:** Шаблон для создания few-shot промтов - промтов с примерами для обучения модели на конкретной задаче.
+
+**Применение:** Используется для задач, где нужно показать модели паттерн через примеры.
+
+**Файл:** `packages/components/nodes/prompts/FewShotPromptTemplate/FewShotPromptTemplate.ts:32-54`
+
+#### Examples (JSON)
+
+**Описание:** Примеры в формате JSON для few-shot обучения.
+
+**Формат:**
+```json
+[
+  { "word": "happy", "antonym": "sad" },
+  { "word": "tall", "antonym": "short" }
+]
+```
+
+#### Prefix
+
+**Описание:** Префикс, объясняющий задачу.
+
+**Промт:**
+```
+Give the antonym of every input
+```
+
+#### Suffix
+
+**Описание:** Суффикс с шаблоном для входных данных.
+
+**Переменные:**
+- `{input}` - входное слово
+
+**Промт:**
+```
+Word: {input}
+Antonym:
+```
+
+---
+
+## ОБЩАЯ СТАТИСТИКА
+
+### Распределение промтов по категориям
+
+| Категория | Количество промтов | Основное назначение |
+|-----------|-------------------|-------------------|
+| **AgentFlow** | 3 | Управление потоком агентов, суммаризация, маршрутизация |
+| **Chains** | 5 | Работа с документами, диалоги, переформулирование вопросов |
+| **Agents** | 11 | Автономные AI системы с инструментами и планированием |
+| **Retrievers** | 11 | Поиск и извлечение информации из векторных БД |
+| **API & Templates** | 6 | Работа с API, шаблоны промтов |
+| **ИТОГО** | 36+ | Полный набор для построения LLM приложений |
+
+### Ключевые паттерны использования
+
+1. **Системные промты** - определяют роль и поведение AI
+2. **Шаблоны с переменными** - позволяют динамически подставлять данные
+3. **Few-shot промты** - обучают через примеры
+4. **Доменно-специфичные промты** - оптимизированы для конкретных задач
+5. **Мульти-агентные промты** - координируют работу нескольких агентов
+
+### Типичные переменные
+
+- `{question}` / `{input}` - вопрос/ввод пользователя
+- `{context}` - релевантный контекст из документов
+- `{chat_history}` - история диалога
+- `{tools}` - список доступных инструментов
+- `{objective}` - главная цель задачи
+- `{agent_scratchpad}` - промежуточные шаги агента
+
+---
+
