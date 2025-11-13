@@ -521,3 +521,184 @@ Select strategically to minimize the number of steps taken.
 
 ---
 
+## RETRIEVER PROMPTS
+
+Промты для ретриверов - компонентов, которые извлекают релевантную информацию из векторных баз данных и других источников. Эти промты помогают улучшить качество поиска и расширить запросы пользователей.
+
+**Основные файлы:**
+- `packages/components/nodes/retrievers/MultiQueryRetriever/MultiQueryRetriever.ts`
+- `packages/components/nodes/retrievers/HydeRetriever/HydeRetriever.ts`
+- `packages/components/nodes/retrievers/PromptRetriever/PromptRetriever.ts`
+- `packages/components/nodes/retrievers/ExtractMetadataRetriever/ExtractMetadataRetriever.ts`
+
+### 1. MULTI_QUERY_RETRIEVER_PROMPT
+
+**Назначение:** Генерирует несколько альтернативных формулировок пользовательского запроса для улучшения поиска в векторных базах данных. Помогает преодолеть ограничения distance-based similarity search.
+
+**Применение:** Используется в MultiQueryRetriever для создания 3 различных версий одного вопроса, что увеличивает шансы найти все релевантные документы.
+
+**Файл:** `packages/components/nodes/retrievers/MultiQueryRetriever/MultiQueryRetriever.ts:5-20`
+
+**Переменные:**
+- `{question}` - исходный вопрос пользователя
+
+**Особенности:**
+- Генерирует ровно 3 альтернативные версии вопроса
+- Результат оборачивается в XML теги `<questions>`
+- Каждая альтернатива на отдельной строке
+
+**Промт:**
+```
+You are an AI language model assistant. Your task is
+to generate 3 different versions of the given user
+question to retrieve relevant documents from a vector database.
+By generating multiple perspectives on the user question,
+your goal is to help the user overcome some of the limitations
+of distance-based similarity search.
+
+Provide these alternative questions separated by newlines between XML tags. For example:
+
+<questions>
+Question 1
+Question 2
+Question 3
+</questions>
+
+Original question: {question}
+```
+
+### 2. HYDE_RETRIEVER_PROMPTS
+
+**Назначение:** Набор специализированных промтов для HyDE (Hypothetical Document Embeddings) retriever. Генерирует гипотетические документы, которые затем используются для улучшения поиска в различных доменах.
+
+**Применение:** HyDE создаёт "воображаемый" документ, который теоретически мог бы ответить на вопрос, и использует его эмбеддинг для поиска реальных документов.
+
+**Файл:** `packages/components/nodes/retrievers/HydeRetriever/HydeRetriever.ts:54-109`
+
+**Переменные:**
+- `{question}` - вопрос или утверждение пользователя
+
+#### 2.1 Web Search Prompt
+
+**Назначение:** Для общего веб-поиска и информационных запросов.
+
+**Промт:**
+```
+Please write a passage to answer the question
+Question: {question}
+Passage:
+```
+
+#### 2.2 SciFact Prompt
+
+**Назначение:** Для научных утверждений и проверки фактов в научной литературе.
+
+**Промт:**
+```
+Please write a scientific paper passage to support/refute the claim
+Claim: {question}
+Passage:
+```
+
+#### 2.3 Arguana Prompt
+
+**Назначение:** Для аргументации и дебатов, генерирует контраргументы.
+
+**Промт:**
+```
+Please write a counter argument for the passage
+Passage: {question}
+Counter Argument:
+```
+
+#### 2.4 TREC-COVID Prompt
+
+**Назначение:** Для медицинских и научных запросов, особенно связанных с COVID-19.
+
+**Промт:**
+```
+Please write a scientific paper passage to answer the question
+Question: {question}
+Passage:
+```
+
+#### 2.5 FIQA (Financial) Prompt
+
+**Назначение:** Для финансовых вопросов и анализа финансовой информации.
+
+**Промт:**
+```
+Please write a financial article passage to answer the question
+Question: {question}
+Passage:
+```
+
+#### 2.6 DBPedia-Entity Prompt
+
+**Назначение:** Для поиска информации о сущностях (люди, места, организации).
+
+**Промт:**
+```
+Please write a passage to answer the question.
+Question: {question}
+Passage:
+```
+
+#### 2.7 TREC-News Prompt
+
+**Назначение:** Для новостных тем и актуальных событий.
+
+**Промт:**
+```
+Please write a news passage about the topic.
+Topic: {question}
+Passage:
+```
+
+#### 2.8 Mr-Tydi (Multilingual) Prompt
+
+**Назначение:** Для мультиязычного поиска (Swahili, Korean, Japanese, Bengali).
+
+**Промт:**
+```
+Please write a passage in Swahili/Korean/Japanese/Bengali to answer the question in detail.
+Question: {question}
+Passage:
+```
+
+### 3. PROMPT_RETRIEVER_EXAMPLE
+
+**Назначение:** Пример промта для PromptRetriever - демонстрирует, как можно создать специализированного ассистента для конкретной области знаний.
+
+**Применение:** Используется как шаблон для создания доменно-специфичных промтов.
+
+**Файл:** `packages/components/nodes/retrievers/PromptRetriever/PromptRetriever.ts:40-44`
+
+**Особенности:**
+- Определяет роль эксперта (профессор физики)
+- Устанавливает стиль ответов (краткие и понятные)
+- Указывает поведение при незнании ответа
+
+**Промт:**
+```
+You are a very smart physics professor. You are great at answering questions about physics in a concise and easy to understand manner. When you don't know the answer to a question you admit that you don't know.
+```
+
+### 4. EXTRACT_METADATA_RETRIEVER_PROMPT
+
+**Назначение:** Извлекает ключевые слова из запроса пользователя для улучшения метаданных поиска.
+
+**Применение:** Используется для создания структурированных метаданных из естественного языка запроса.
+
+**Файл:** `packages/components/nodes/retrievers/ExtractMetadataRetriever/ExtractMetadataRetriever.ts:9`
+
+**Переменные:**
+- `{{query}}` - запрос пользователя (обратите внимание на двойные фигурные скобки)
+
+**Промт:**
+```
+Extract keywords from the query: {{query}}
+```
+
+---
+
